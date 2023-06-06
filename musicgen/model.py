@@ -19,6 +19,7 @@ class MusicNet(nn.Module):
             hidden_size=Constants.HIDDEN_SIZE,
             num_layers=Constants.NUM_LAYERS,
             dropout=Constants.DROPOUT,
+            batch_first=True,
         )
 
         self.linear = nn.Linear(
@@ -33,8 +34,16 @@ class MusicNet(nn.Module):
 
         return x, hidden
 
-    def init_hidden(self, batch_size):
+    def init_hidden(self, batch_size, device):
         return (
-            torch.zeros(Constants.NUM_LAYERS, batch_size, Constants.HIDDEN_SIZE),
-            torch.zeros(Constants.NUM_LAYERS, batch_size, Constants.HIDDEN_SIZE),
+            torch.zeros(
+                Constants.NUM_LAYERS,
+                batch_size,
+                Constants.HIDDEN_SIZE,
+            ).to(device),
+            torch.zeros(
+                Constants.NUM_LAYERS,
+                batch_size,
+                Constants.HIDDEN_SIZE,
+            ).to(device),
         )

@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 import pandas as pd
 import numpy as np
@@ -8,8 +9,11 @@ from tqdm import tqdm
 from musicgen.dataset import MusicDataset
 from musicgen.constants import Constants
 from musicgen.model import MusicNet
+from musicgen.preprocess import convert_tokens_to_midi
 
 DATASET_FILE = "data/dataset.pkl"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def load_split(split: Literal["train", "validation", "test"]):
@@ -17,9 +21,25 @@ def load_split(split: Literal["train", "validation", "test"]):
     df = df[df["split"] == split]
 
     # join the tokens into one long sequence
-    data = np.concatenate(df["tokens"].values)
+    data = np.concatenate(df["tokens"].values)[:10000]
 
     return MusicDataset(data, seq_length=Constants.SEQ_LENGTH)
+
+
+# def save_model(model: MusicNet, folder_name, prompt=None):
+#     os.makedirs(folder_name, exist_ok=True)
+
+#     torch.save(model.state_dict(), os.path.join(folder_name, "model.pt"))
+
+#     samples = model.generate(
+#         num_generate=Constants.SEQ_LENGTH,
+#         device=device,
+#         prompt=prompt,
+#     )
+
+#     midi = convert_tokens_to_midi(samples)
+
+#     midi.save(os.path.join(folder_name, "sample.mid"))
 
 
 def main():
@@ -37,8 +57,6 @@ def main():
         shuffle=True,
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     model = MusicNet().to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=Constants.LEARNING_RATE)
@@ -46,32 +64,36 @@ def main():
 
     for epoch in range(Constants.EPOCHS):
         model.train()
-        total_loss = 0
-        batches = 0
 
-        pb = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{Constants.EPOCHS}", unit="b")
+        epoch_loss = 0
+        report_loss = 0
 
-        for x, y in pb:
-            x = x.to(device)
-            y = y.to(device)
+        with tqdm(
+            enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader)
+        ) as pbar:
+            for i, (X, y) in pbar:
+                optimizer.zero_grad()
 
-            optimizer.zero_grad()
+                X = X.to(device)
+                y = y.to(device)
 
-            output, _ = model(x)
+                y_pred, _ = model(X)
 
-            loss = criterion(output.transpose(1, 2), y)
-            loss.backward()
+                loss = criterion(y_pred.transpose(1, 2), y)
 
-            optimizer.step()
+                loss.backward()
+                optimizer.step()
 
-            total_loss += loss.item()
-            batches += 1
+                epoch_loss += loss.item()
+                report_loss += loss.item()
 
-            if batches % Constants.REPORT_INTERVAL == 0:
-                pb.set_postfix(loss=total_loss / Constants.REPORT_INTERVAL)
-                total_loss = 0
+                if i % Constants.REPORT_INTERVAL == 0 or i == len(train_loader) - 1:
+                    pbar.set_postfix({"loss": report_loss / Constants.REPORT_INTERVAL})
+                    report_loss = 0
 
-        pb.close()
+        epoch_loss /= len(train_loader)
+
+        print(f"Epoch {epoch} loss: {epoch_loss}")
 
 
 if __name__ == "__main__":

@@ -166,7 +166,7 @@ def convert_midi(mid: mido.MidiFile):
 
 def convert_tokens_to_midi(tokens) -> mido.MidiFile:
     dt = 0
-    velocity = -1
+    velocity = 127
 
     mid = mido.MidiFile()
 
