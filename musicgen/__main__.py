@@ -20,8 +20,7 @@ def load_split(split: Literal["train", "validation", "test"]):
     df = pd.read_pickle(DATASET_FILE)
     df = df[df["split"] == split]
 
-    # join the tokens into one long sequence
-    data = np.concatenate(df["tokens"].values)[:10000]
+    data = np.concatenate(df["tokens"].values)
 
     return MusicDataset(data, seq_length=Constants.SEQ_LENGTH)
 
@@ -40,6 +39,40 @@ def load_split(split: Literal["train", "validation", "test"]):
 #     midi = convert_tokens_to_midi(samples)
 
 #     midi.save(os.path.join(folder_name, "sample.mid"))
+
+
+def save_model(model: MusicNet, folder_name, prompt=None):
+    model.eval()
+
+    os.makedirs(folder_name, exist_ok=True)
+
+    if prompt is None:
+        prompt = torch.randint(
+            Constants.NUM_TOKENS,
+            (1, 1),
+            dtype=torch.long,
+            device=device,
+        )
+
+    sample = model.generate(
+        num_generate=1024,
+        device=device,
+        # prompt=torch.randint(
+        #     Constants.NUM_TOKENS,
+        #     (1, 1),
+        #     dtype=torch.long,
+        #     device=device,
+        # ),
+        prompt=prompt,
+    )
+
+    midi = convert_tokens_to_midi(sample[0])
+
+    midi.save(os.path.join(folder_name, "sample.mid"))
+    torch.save(model.state_dict(), os.path.join(folder_name, "model.pt"))
+    Constants.save(os.path.join(folder_name, "constants.json"))
+
+    model.train()
 
 
 def main():
@@ -87,13 +120,39 @@ def main():
                 epoch_loss += loss.item()
                 report_loss += loss.item()
 
-                if i % Constants.REPORT_INTERVAL == 0 or i == len(train_loader) - 1:
+                if i % Constants.REPORT_INTERVAL == 0:
                     pbar.set_postfix({"loss": report_loss / Constants.REPORT_INTERVAL})
                     report_loss = 0
 
-        epoch_loss /= len(train_loader)
+                    save_model(model, f"ckpt/latest", prompt=X[0, :100].unsqueeze(0))
 
-        print(f"Epoch {epoch} loss: {epoch_loss}")
+                if i % Constants.SAVE_INTERVAL == 0:
+                    model.eval()
+                    save_model(
+                        model,
+                        f"ckpt/epoch_{epoch}_step_{i}",
+                        prompt=X[0, :100].unsqueeze(0),
+                    )
+                    model.train()
+
+        model.eval()
+
+        print(f"Epoch {epoch} loss: {epoch_loss / len(train_loader)}")
+
+        val_loss = 0
+
+        with torch.no_grad():
+            for X, y in validation_loader:
+                X = X.to(device)
+                y = y.to(device)
+
+                y_pred, _ = model(X)
+
+                loss = criterion(y_pred.transpose(1, 2), y)
+
+                val_loss += loss.item()
+
+        print(f"Epoch {epoch} validation loss: {val_loss / len(validation_loader)}")
 
 
 if __name__ == "__main__":

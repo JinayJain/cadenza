@@ -47,3 +47,38 @@ class MusicNet(nn.Module):
                 Constants.HIDDEN_SIZE,
             ).to(device),
         )
+
+    def generate(self, num_generate, device, prompt):
+        """
+        Generate a sequence of tokens.
+
+        Parameters
+        ----------
+
+        num_generate: int
+            The number of new tokens to generate.
+
+        device: torch.device
+            The device to run the model on.
+
+        prompt: torch.Tensor
+            The prompt to start generating from. Must be of shape
+            (batch_size, seq_length).
+        """
+
+        batch_size, seq_length = prompt.shape
+
+        hidden = self.init_hidden(batch_size, device)
+        _, hidden = self.forward(prompt, hidden)
+
+        tokens = prompt[:, -1].unsqueeze(1)
+
+        for _ in range(num_generate):
+            logits, hidden = self.forward(tokens, hidden)
+
+            probs = F.softmax(logits[:, -1], dim=-1)
+            tokens = torch.multinomial(probs, num_samples=1)
+
+            prompt = torch.cat([prompt, tokens], dim=1)
+
+        return prompt
