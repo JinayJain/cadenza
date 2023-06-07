@@ -116,7 +116,7 @@ def time_to_tokens(dt):
     return tokens
 
 
-def convert_midi(mid: mido.MidiFile):
+def convert_midi_to_tokens(mid: mido.MidiFile):
     dt = 0
     velocity = -1
     sustain = False
@@ -201,7 +201,7 @@ def main():
     df = load_df()
 
     midi_tokens = [
-        np.array(convert_midi(load_midi(os.path.join(DATA_DIR, path))))
+        np.array(convert_midi_to_tokens(load_midi(os.path.join(DATA_DIR, path))))
         for path in tqdm(df["midi_filename"])
     ]
 
