@@ -6,10 +6,10 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from cadenza.dataset import MusicDataset
+from cadenza.data.dataset import MusicDataset
 from cadenza.constants import Constants
 from cadenza.model import MusicNet
-from cadenza.preprocess import convert_tokens_to_midi
+from cadenza.data.preprocess import convert_tokens_to_midi
 
 DATASET_FILE = "data/dataset.pkl"
 

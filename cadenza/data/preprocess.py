@@ -1,5 +1,5 @@
 """
-Converts the Maestro dataset into a format that can be used by the model.
+Converts a MIDI dataset into a format that can be used by the model.
 """
 
 from enum import Enum
