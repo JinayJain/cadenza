@@ -5,6 +5,7 @@ Converts the Maestro dataset into a format that can be used by the model.
 from enum import Enum
 import functools
 import os
+from typing import Tuple, Union
 import numpy as np
 import pandas as pd
 import mido
@@ -164,6 +165,15 @@ def convert_midi_to_tokens(mid: mido.MidiFile):
     return tokens
 
 
+def token_to_event(token) -> Tuple[EventType, Union[int, float]]:
+    event_type = get_event_type(token)
+
+    if event_type == EventType.TIME_SHIFT:
+        return (event_type, token_to_value(token, event_type, round=False))
+    else:
+        return (event_type, token_to_value(token, event_type))
+
+
 def convert_tokens_to_midi(tokens) -> mido.MidiFile:
     dt = 0
     velocity = 127
@@ -174,18 +184,18 @@ def convert_tokens_to_midi(tokens) -> mido.MidiFile:
     mid.tracks.append(track)
 
     for token in tokens:
-        event_type = get_event_type(token)
+        event_type, value = token_to_event(token)
 
         if event_type == EventType.TIME_SHIFT:
-            dt += token_to_value(token, event_type, round=False)
+            dt += value
         elif event_type == EventType.SET_VELOCITY:
-            velocity = token_to_value(token, event_type)
+            velocity = value
         else:
             kind = "note_on" if event_type == EventType.NOTE_ON else "note_off"
             track.append(
                 mido.Message(
                     kind,
-                    note=token_to_value(token, event_type),
+                    note=value,
                     velocity=velocity,
                     time=int(
                         mido.second2tick(dt, mid.ticks_per_beat, mido.bpm2tempo(120))
