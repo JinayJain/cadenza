@@ -4,9 +4,9 @@ import fluidsynth
 import time
 import numpy as np
 
-from musicgen.model import MusicNet
-from musicgen.constants import Constants
-from musicgen.preprocess import EventType, token_to_event
+from cadenza.model import MusicNet
+from cadenza.constants import Constants
+from cadenza.preprocess import EventType, token_to_event
 
 
 def main():

@@ -2,9 +2,9 @@ import torch
 import mido
 from argparse import ArgumentParser
 
-from musicgen.model import MusicNet
-from musicgen.preprocess import convert_midi_to_tokens, convert_tokens_to_midi
-from musicgen.constants import Constants
+from cadenza.model import MusicNet
+from cadenza.preprocess import convert_midi_to_tokens, convert_tokens_to_midi
+from cadenza.constants import Constants
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from musicgen.constants import Constants
+from cadenza.constants import Constants
 
 
 class MusicNet(nn.Module):
