@@ -18,8 +18,8 @@ def main():
     model.load_state_dict(torch.load(args.model, map_location=device))
 
     fs = fluidsynth.Synth()
-    # fs.start()
-    buf = []
+    if not args.output:
+        fs.start()
 
     sfid = fs.sfload(args.soundfont)
 
@@ -34,45 +34,33 @@ def main():
     hidden = model.init_hidden(1, device)
 
     velocity = 127
-    TEMPERATURE = 0.9
+    TEMPERATURE = args.temperature
 
-    start = time.time()
-    total_samples = 0
+    if args.output:
+        f = open(args.output, "wb")
 
-    with open("live.pipe", "wb") as f:
-        # for i in range(1000):
-        while True:
-            x, hidden = model(x, hidden)
+    while True:
+        x, hidden = model(x, hidden)
 
-            x = x.squeeze().div(TEMPERATURE).exp()
-            x = torch.multinomial(x, num_samples=1).unsqueeze(0)
+        x = x.squeeze().div(TEMPERATURE).exp()
+        x = torch.multinomial(x, num_samples=1).unsqueeze(0)
 
-            token = x.item()
-            event_type, event_value = token_to_event(token)
+        token = x.item()
+        event_type, event_value = token_to_event(token)
 
-            match event_type:
-                case EventType.NOTE_ON:
-                    fs.noteon(0, event_value, velocity)
-                case EventType.NOTE_OFF:
-                    fs.noteoff(0, event_value)
-                case EventType.TIME_SHIFT:
-                    # time.sleep(event_value)
-
+        match event_type:
+            case EventType.NOTE_ON:
+                fs.noteon(0, event_value, velocity)
+            case EventType.NOTE_OFF:
+                fs.noteoff(0, event_value)
+            case EventType.TIME_SHIFT:
+                if args.output:
                     sample = fs.get_samples(int(event_value * 44100))
-                    total_samples += len(sample)
-
-                    elapsed_time = time.time() - start
-                    elapsed_sample_time = total_samples / (44100 * 2)
-
-                    print(
-                        f"Elapsed time: {elapsed_time:.2f} s, "
-                        f"Elapsed sample time: {elapsed_sample_time:.2f} s, "
-                    )
-
                     f.write(fluidsynth.raw_audio_string(sample))
-
-                case EventType.SET_VELOCITY:
-                    velocity = event_value
+                else:
+                    time.sleep(event_value)
+            case EventType.SET_VELOCITY:
+                velocity = event_value
 
     fs.delete()
 
@@ -94,6 +82,21 @@ def parse_args():
         type=str,
         required=True,
         help="The path to the soundfont to use.",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        help="The path to the pipe to write to.",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="The temperature to use when sampling.",
     )
 
     args = parser.parse_args()
