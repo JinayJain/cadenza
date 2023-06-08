@@ -14,6 +14,7 @@ def main():
     parser = ArgumentParser()
 
     parser.add_argument(
+        "-m",
         "--model",
         type=str,
         required=True,
@@ -21,6 +22,7 @@ def main():
     )
 
     parser.add_argument(
+        "-p",
         "--prompt",
         type=str,
         default=None,
@@ -28,6 +30,7 @@ def main():
     )
 
     parser.add_argument(
+        "-n",
         "--num-generate",
         type=int,
         default=1024,
@@ -35,6 +38,7 @@ def main():
     )
 
     parser.add_argument(
+        "-o",
         "--output",
         type=str,
         default="sample.mid",
@@ -46,7 +50,7 @@ def main():
     # load the model
     model = MusicNet().to(device)
 
-    model.load_state_dict(torch.load(args.model))
+    model.load_state_dict(torch.load(args.model, map_location=device))
 
     # load the prompt
     if args.prompt is not None:

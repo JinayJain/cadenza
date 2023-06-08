@@ -15,7 +15,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
     model = MusicNet().to(device)
-    model.load_state_dict(torch.load(args.model))
+    model.load_state_dict(torch.load(args.model, map_location=device))
 
     fs = fluidsynth.Synth()
     # fs.start()
