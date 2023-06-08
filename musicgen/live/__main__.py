@@ -3,7 +3,6 @@ import torch
 import fluidsynth
 import time
 import numpy as np
-import ffmpeg
 
 from musicgen.model import MusicNet
 from musicgen.constants import Constants
