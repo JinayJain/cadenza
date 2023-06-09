@@ -2,8 +2,8 @@ import torch
 import mido
 from argparse import ArgumentParser
 
-from cadenza.model import MusicNet
-from cadenza.preprocess import convert_midi_to_tokens, convert_tokens_to_midi
+from cadenza.model.rnn import CadenzaRNN
+from cadenza.data.preprocess import convert_midi_to_tokens, convert_tokens_to_midi
 from cadenza.constants import Constants
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -48,7 +48,7 @@ def main():
     args = parser.parse_args()
 
     # load the model
-    model = MusicNet().to(device)
+    model = CadenzaRNN().to(device)
 
     model.load_state_dict(torch.load(args.model, map_location=device))
 

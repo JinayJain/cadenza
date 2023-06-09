@@ -1,14 +1,13 @@
 import json
 
+from cadenza.data.preprocess import EVENT_TOKEN_SIZE
+
 
 class Constants:
-    NUM_TOKENS = 128 + 128 + 125 + 32
-    EMBEDDING_DIM = 256
-    HIDDEN_SIZE = 512
-    NUM_LAYERS = 3
-    DROPOUT = 0.2
-    SEQ_LENGTH = 512
-    BATCH_SIZE = 32
+    SEED = 42
+    NUM_TOKENS = sum(EVENT_TOKEN_SIZE.values())
+    CONTEXT_LENGTH = 512
+    BATCH_SIZE = 64
     LEARNING_RATE = 0.001
     EPOCHS = 100
     REPORT_INTERVAL = 100

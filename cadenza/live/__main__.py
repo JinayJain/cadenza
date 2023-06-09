@@ -4,9 +4,9 @@ import fluidsynth
 import time
 import numpy as np
 
-from cadenza.model import MusicNet
+from cadenza.model.rnn import CadenzaRNN
 from cadenza.constants import Constants
-from cadenza.preprocess import EventType, token_to_event
+from cadenza.data.preprocess import EventType, token_to_event
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
-    model = MusicNet().to(device)
+    model = CadenzaRNN().to(device)
     model.load_state_dict(torch.load(args.model, map_location=device))
 
     fs = fluidsynth.Synth()

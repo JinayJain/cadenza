@@ -5,7 +5,7 @@ from torch.nn import functional as F
 from cadenza.constants import Constants
 
 
-class MusicNet(nn.Module):
+class CadenzaRNN(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
