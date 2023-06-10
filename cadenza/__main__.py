@@ -4,13 +4,13 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 from cadenza.data.dataset import MusicDataset
 from cadenza.constants import Constants
-from cadenza.model.rnn import CadenzaRNN
 from cadenza.data.preprocess import convert_tokens_to_midi
-from cadenza.model.transformer import CadenzaTransformer, CadenzaTransformerConfig
+from cadenza.model.v2.rnn import CadenzaRNN, CadenzaRNNConfig
 
 DATASET_FILE = "data/dataset.pkl"
 
@@ -26,7 +26,7 @@ def load_split(split: Literal["train", "validation", "test"]):
     df = pd.read_pickle(DATASET_FILE)
     df = df[df["split"] == split]
 
-    data = np.concatenate(df["tokens"].values)[: Constants.CONTEXT_LENGTH * 100]
+    data = np.concatenate(df["tokens"].values)
 
     return MusicDataset(data, seq_length=Constants.CONTEXT_LENGTH)
 
@@ -67,8 +67,6 @@ def save_model(model, folder_name, prompt=None):
 
 
 def main():
-    seed_everything(Constants.SEED)
-
     train_dataset = load_split("train")
     validation_dataset = load_split("validation")
 
@@ -76,6 +74,7 @@ def main():
         train_dataset,
         batch_size=Constants.BATCH_SIZE,
         shuffle=True,
+        num_workers=4,
     )
     validation_loader = DataLoader(
         validation_dataset,
@@ -83,82 +82,26 @@ def main():
         shuffle=True,
     )
 
-    # model = CadenzaRNN().to(device)
-    model_config = CadenzaTransformerConfig(
+    config = CadenzaRNNConfig(
         n_token=Constants.NUM_TOKENS,
-        d_model=512,
-        n_head=8,
-        n_attn_layer=6,
-        d_feedforward=1024,
-        dropout=0.1,
-        context_length=Constants.CONTEXT_LENGTH,
-        norm_first=True,
+        d_embed=512,
+        hidden_size=512,
+        n_layer=3,
+        dropout=0.5,
     )
-    model = CadenzaTransformer(model_config).to(device)
+    model = CadenzaRNN(config)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=Constants.LEARNING_RATE)
-    criterion = torch.nn.CrossEntropyLoss()
+    ckpt_callback = ModelCheckpoint(
+        every_n_train_steps=500,
+        monitor="train_loss",
+        dirpath="checkpoints",
+        filename="model-{epoch}-{train_loss:.2f}",
+        save_top_k=3,
+        mode="min",
+    )
 
-    attn_mask = CadenzaTransformer.generate_mask(Constants.CONTEXT_LENGTH, device)
-
-    for epoch in range(Constants.EPOCHS):
-        model.train()
-
-        epoch_loss = 0
-        report_loss = 0
-
-        with tqdm(
-            enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader)
-        ) as pbar:
-            for i, (X, y) in pbar:
-                optimizer.zero_grad()
-
-                X = X.to(device)
-                y = y.to(device)
-
-                y_pred = model(X, attn_mask)
-
-                loss = criterion(y_pred.transpose(1, 2), y)
-
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item()
-                report_loss += loss.item()
-
-                if i % Constants.REPORT_INTERVAL == 0:
-                    pbar.set_postfix({"loss": report_loss / Constants.REPORT_INTERVAL})
-                    report_loss = 0
-
-                    save_model(model, f"ckpt/latest", prompt=X[0, :20].unsqueeze(0))
-
-                if i % Constants.SAVE_INTERVAL == 0:
-                    model.eval()
-                    save_model(
-                        model,
-                        f"ckpt/epoch_{epoch}_step_{i}",
-                        prompt=X[0, :100].unsqueeze(0),
-                    )
-                    model.train()
-
-        model.eval()
-
-        print(f"Epoch {epoch} loss: {epoch_loss / len(train_loader)}")
-
-        val_loss = 0
-
-        with torch.no_grad():
-            for X, y in validation_loader:
-                X = X.to(device)
-                y = y.to(device)
-
-                y_pred, _ = model(X)
-
-                loss = criterion(y_pred.transpose(1, 2), y)
-
-                val_loss += loss.item()
-
-        print(f"Epoch {epoch} validation loss: {val_loss / len(validation_loader)}")
+    trainer = pl.Trainer(profiler="simple", max_epochs=10, callbacks=[ckpt_callback])
+    trainer.fit(model, train_loader)
 
 
 if __name__ == "__main__":

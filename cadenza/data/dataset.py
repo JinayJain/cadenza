@@ -18,6 +18,6 @@ class MusicDataset(Dataset):
             sample = self.transform(sample)
 
         return (
-            sample[1:],
             sample[:-1],
+            sample[1:],
         )

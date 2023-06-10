@@ -14,6 +14,7 @@ class CadenzaTransformerConfig:
     dropout: float
     context_length: int
     norm_first: bool = False
+    attn_mask: torch.Tensor = False
 
 
 class CadenzaTransformer(nn.Module):
@@ -52,17 +53,17 @@ class CadenzaTransformer(nn.Module):
             out_features=config.n_token,
         )
 
-    def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         x = self.embedding(x) * math.sqrt(self.config.d_model)
         x = self.pos_enc(x)
-        x = self.encoder(x, mask)
+        x = self.encoder(x, self.config.attn_mask)
         x = self.fc(x)
 
         return x  # (batch_size, seq_len, n_token)
 
     def generate(self, num_generate, device, prompt):
         generated = prompt
-        TEMP = 1.5
+        TEMP = 1.0
         for _ in range(num_generate):
             recent = generated[-self.config.context_length :,]
             output = self.forward(

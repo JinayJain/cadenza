@@ -6,11 +6,11 @@ from cadenza.data.preprocess import EVENT_TOKEN_SIZE
 class Constants:
     SEED = 42
     NUM_TOKENS = sum(EVENT_TOKEN_SIZE.values())
-    CONTEXT_LENGTH = 512
-    BATCH_SIZE = 64
+    CONTEXT_LENGTH = 1024
+    BATCH_SIZE = 16
     LEARNING_RATE = 0.001
     EPOCHS = 100
-    REPORT_INTERVAL = 100
+    REPORT_INTERVAL = 1000
     SAVE_INTERVAL = 10000
     CHECKPOINT_DIR = "ckpt"
 

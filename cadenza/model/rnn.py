@@ -1,30 +1,40 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from dataclasses import dataclass
 
 from cadenza.constants import Constants
 
 
+@dataclass
+class CadenzaRNNConfig:
+    n_token: int
+    d_embed: int
+    hidden_size: int
+    n_layer: int
+    dropout: float
+
+
 class CadenzaRNN(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, config: CadenzaRNNConfig) -> None:
         super().__init__()
 
         self.embedding = nn.Embedding(
-            num_embeddings=Constants.NUM_TOKENS,
-            embedding_dim=Constants.EMBEDDING_DIM,
+            num_embeddings=config.n_token,
+            embedding_dim=config.d_embed,
         )
 
         self.lstm = nn.LSTM(
-            input_size=Constants.EMBEDDING_DIM,
-            hidden_size=Constants.HIDDEN_SIZE,
-            num_layers=Constants.NUM_LAYERS,
-            dropout=Constants.DROPOUT,
+            input_size=config.d_embed,
+            hidden_size=config.hidden_size,
+            num_layers=config.n_layer,
+            dropout=config.dropout,
             batch_first=True,
         )
 
         self.linear = nn.Linear(
-            in_features=Constants.HIDDEN_SIZE,
-            out_features=Constants.NUM_TOKENS,
+            in_features=config.hidden_size,
+            out_features=config.n_token,
         )
 
     def forward(self, x, hidden=None):
