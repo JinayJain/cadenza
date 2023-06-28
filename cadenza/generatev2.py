@@ -1,10 +1,12 @@
 from argparse import ArgumentParser
+
+from tqdm import tqdm
 from cadenza.data.preprocess import (
     convert_midi_to_tokens,
     convert_tokens_to_midi,
     load_midi,
 )
-from cadenza.model.v2.rnn import CadenzaRNN
+from cadenza.model.v2.transformer import CadenzaTransformer, CadenzaTransformerConfig
 from cadenza.constants import Constants
 import torch
 
@@ -12,8 +14,10 @@ import torch
 def main():
     args = parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = CadenzaRNN.load_from_checkpoint(args.model)
+    cuda = torch.device("cuda")
+    cpu = torch.device("cpu")
+    device = cpu
+    model = CadenzaTransformer.load_from_checkpoint(args.model).to(cuda)
 
     if args.prompt is not None:
         midi = load_midi(args.prompt)
@@ -30,11 +34,14 @@ def main():
             device=device,
         )
 
-    hidden = model.init_hidden(1, device)
-    _, hidden = model(tokens, hidden)
+    # hidden = model.init_hidden(1, device)
+    # _, hidden = model(tokens, hidden)
 
-    for i in range(10_000):
-        output, hidden = model(tokens[:, -1].unsqueeze(0), hidden)
+    block_size = model.cfg.block_size // 2
+    model.eval()
+    for i in tqdm(range(args.num_generate)):
+        model_input = tokens[:, -block_size:].to(cuda)
+        output = model(model_input).to(cpu)
 
         # sample from the output distribution
         token = torch.multinomial(

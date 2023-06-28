@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 import os
 from typing import Literal
 import pandas as pd
@@ -11,6 +12,7 @@ from cadenza.data.dataset import MusicDataset
 from cadenza.constants import Constants
 from cadenza.data.preprocess import convert_tokens_to_midi
 from cadenza.model.v2.rnn import CadenzaRNN, CadenzaRNNConfig
+from cadenza.model.v2.transformer import CadenzaTransformer, CadenzaTransformerConfig
 
 DATASET_FILE = "data/dataset.pkl"
 
@@ -31,42 +33,19 @@ def load_split(split: Literal["train", "validation", "test"]):
     return MusicDataset(data, seq_length=Constants.CONTEXT_LENGTH)
 
 
-def save_model(model, folder_name, prompt=None):
-    model.eval()
+def parse_args():
+    parser = ArgumentParser()
 
-    os.makedirs(folder_name, exist_ok=True)
+    parser.add_argument("-c", "--checkpoint", type=str, required=False)
 
-    if prompt is None:
-        prompt = torch.randint(
-            Constants.NUM_TOKENS,
-            (1, 1),
-            dtype=torch.long,
-            device=device,
-        )
-
-    sample = model.generate(
-        num_generate=1024,
-        device=device,
-        # prompt=torch.randint(
-        #     Constants.NUM_TOKENS,
-        #     (1, 1),
-        #     dtype=torch.long,
-        #     device=device,
-        # ),
-        prompt=prompt,
-    )
-
-    midi = convert_tokens_to_midi(sample[0])
-    print(midi)
-
-    midi.save(os.path.join(folder_name, "sample.mid"))
-    torch.save(model.state_dict(), os.path.join(folder_name, "model.pt"))
-    Constants.save(os.path.join(folder_name, "constants.json"))
-
-    model.train()
+    return parser.parse_args()
 
 
 def main():
+    args = parse_args()
+
+    torch.set_float32_matmul_precision("high")
+
     train_dataset = load_split("train")
     validation_dataset = load_split("validation")
 
@@ -82,17 +61,31 @@ def main():
         shuffle=True,
     )
 
-    config = CadenzaRNNConfig(
-        n_token=Constants.NUM_TOKENS,
-        d_embed=512,
-        hidden_size=512,
-        n_layer=3,
-        dropout=0.5,
-    )
-    model = CadenzaRNN(config)
+    # config = CadenzaRNNConfig(
+    #     n_token=Constants.NUM_TOKENS,
+    #     d_embed=512,
+    #     hidden_size=512,
+    #     n_layer=3,
+    #     dropout=0.5,
+    # )
+    # model = CadenzaRNN(config)
+
+    if args.checkpoint:
+        model = CadenzaTransformer.load_from_checkpoint(args.checkpoint)
+    else:
+        config = CadenzaTransformerConfig(
+            vocab_size=Constants.NUM_TOKENS,
+            block_size=Constants.CONTEXT_LENGTH,
+            d_model=512,
+            n_head=8,
+            n_attn_layer=6,
+            dropout=0.1,
+            lr=1e-3,
+        )
+        model = CadenzaTransformer(config)
 
     ckpt_callback = ModelCheckpoint(
-        every_n_train_steps=500,
+        every_n_train_steps=100,
         monitor="train_loss",
         dirpath="checkpoints",
         filename="model-{epoch}-{train_loss:.2f}",
@@ -100,8 +93,8 @@ def main():
         mode="min",
     )
 
-    trainer = pl.Trainer(profiler="simple", max_epochs=10, callbacks=[ckpt_callback])
-    trainer.fit(model, train_loader)
+    trainer = pl.Trainer(max_epochs=1000, callbacks=[ckpt_callback])
+    trainer.fit(model, train_loader, validation_loader)
 
 
 if __name__ == "__main__":
