@@ -7,7 +7,7 @@ class Constants:
     SEED = 42
     NUM_TOKENS = sum(EVENT_TOKEN_SIZE.values())
     CONTEXT_LENGTH = 512
-    BATCH_SIZE = 32
+    BATCH_SIZE = 16
     LEARNING_RATE = 0.001
     EPOCHS = 100
     REPORT_INTERVAL = 1000

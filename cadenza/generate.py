@@ -1,16 +1,65 @@
-import torch
-import mido
 from argparse import ArgumentParser
 
-from cadenza.model.rnn import CadenzaRNN
-from cadenza.data.preprocess import convert_midi_to_tokens, convert_tokens_to_midi
+from tqdm import tqdm
+from cadenza.data.preprocess import (
+    convert_midi_to_tokens,
+    convert_tokens_to_midi,
+    load_midi,
+)
+from cadenza.model.v2.transformer import (
+    CadenzaTransformer,
+    CadenzaTransformerConfig,
+)
 from cadenza.constants import Constants
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import torch
 
 
 def main():
-    # argument parser for generate script
+    args = parse_args()
+
+    cuda = torch.device("cuda")
+    cpu = torch.device("cpu")
+    device = cpu
+    model = CadenzaTransformer.load_from_checkpoint(args.model).to(cuda)
+
+    if args.prompt is not None:
+        midi = load_midi(args.prompt)
+        tokens = convert_midi_to_tokens(midi)
+        tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
+
+        if args.num_prompt_tokens is not None:
+            tokens = tokens[:, : args.num_prompt_tokens]
+    else:
+        tokens = torch.randint(
+            Constants.NUM_TOKENS,
+            (1, 1),
+            dtype=torch.long,
+            device=device,
+        )
+
+    # hidden = model.init_hidden(1, device)
+    # _, hidden = model(tokens, hidden)
+
+    block_size = model.cfg.block_size // 2
+    model.eval()
+    for i in tqdm(range(args.num_generate)):
+        model_input = tokens[:, -block_size:].to(cuda)
+        output = model(model_input).to(cpu)
+
+        # sample from the output distribution
+        token = torch.multinomial(
+            torch.softmax(output[:, -1] / args.temperature, dim=-1),
+            num_samples=1,
+        )
+
+        tokens = torch.cat([tokens, token], dim=1)
+
+    midi = convert_tokens_to_midi(tokens[0])
+
+    midi.save("sample.mid")
+
+
+def parse_args():
     parser = ArgumentParser()
 
     parser.add_argument(
@@ -18,7 +67,15 @@ def main():
         "--model",
         type=str,
         required=True,
-        help="The path to the model to generate from.",
+        help="Path to model checkpoint",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        required=True,
+        help="Path to output MIDI file",
     )
 
     parser.add_argument(
@@ -26,7 +83,14 @@ def main():
         "--prompt",
         type=str,
         default=None,
-        help="The path to the MIDI file to use as a prompt.",
+        help="Path to prompt MIDI file",
+    )
+
+    parser.add_argument(
+        "--num-prompt-tokens",
+        type=int,
+        default=1024,
+        help="Number of tokens to use from prompt",
     )
 
     parser.add_argument(
@@ -34,56 +98,18 @@ def main():
         "--num-generate",
         type=int,
         default=1024,
-        help="The number of tokens to generate.",
+        help="Number of tokens to generate",
     )
 
     parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default="sample.mid",
-        help="The path to save the generated MIDI file to.",
+        "-t",
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature for sampling",
     )
 
-    args = parser.parse_args()
-
-    # load the model
-    model = CadenzaRNN().to(device)
-
-    model.load_state_dict(torch.load(args.model, map_location=device))
-
-    # load the prompt
-    if args.prompt is not None:
-        midi = mido.MidiFile(args.prompt)
-
-        prompt = torch.tensor(
-            convert_midi_to_tokens(midi),
-            dtype=torch.long,
-            device=device,
-        )
-
-    else:
-        prompt = torch.randint(
-            Constants.NUM_TOKENS,
-            (1, 1),
-            dtype=torch.long,
-            device=device,
-        )
-
-    # generate the music
-    model.eval()
-
-    sample = model.generate(
-        num_generate=args.num_generate,
-        device=device,
-        prompt=prompt,
-    ).squeeze()
-
-    # convert the tokens to MIDI
-    midi = convert_tokens_to_midi(sample)
-
-    # save the MIDI file
-    midi.save(args.output)
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

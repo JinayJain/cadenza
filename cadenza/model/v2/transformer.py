@@ -26,6 +26,7 @@ class CadenzaTransformer(l.LightningModule):
         self.cfg = cfg
 
         self.embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
+        self.pos_encoder = PositionalEncoding(cfg.d_model, cfg.dropout)
 
         self.transformer_layers = nn.ModuleList(
             [TransformerLayer(cfg) for _ in range(cfg.n_attn_layer)]
@@ -55,6 +56,15 @@ class CadenzaTransformer(l.LightningModule):
         self.log("train_loss", loss)
         return loss
 
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(
+            y_hat.view(-1, y_hat.size(-1)),
+            y.view(-1),
+        )
+        self.log("val_loss", loss)
+
 
 class TransformerLayer(nn.Module):
     def __init__(self, cfg: CadenzaTransformerConfig):
@@ -69,6 +79,29 @@ class TransformerLayer(nn.Module):
         x = x + self.attn(self.ln1(x))
         x = x + self.ff(self.ln2(x))
         return x
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
+        )
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[: x.size(0)]
+        return self.dropout(x)
 
 
 class MultiHeadRelAttention(nn.Module):
@@ -110,7 +143,7 @@ class MultiHeadRelAttention(nn.Module):
         v = v.view(B, T, n_head, C // n_head).transpose(1, 2)
 
         raw_attn = q @ k.transpose(-2, -1)
-        Srel = q @ self.Er[:, :T, :].transpose(-2, -1)
+        Srel = q @ self.Er[:, -T:, :].transpose(-2, -1)
 
         # add a column of zeros to the left
         Srel = torch.cat([torch.zeros_like(Srel[:, :, :, :1]), Srel], dim=-1)

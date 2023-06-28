@@ -12,7 +12,10 @@ from cadenza.data.dataset import MusicDataset
 from cadenza.constants import Constants
 from cadenza.data.preprocess import convert_tokens_to_midi
 from cadenza.model.v2.rnn import CadenzaRNN, CadenzaRNNConfig
-from cadenza.model.v2.transformer import CadenzaTransformer, CadenzaTransformerConfig
+from cadenza.model.v2.transformer import (
+    CadenzaTransformer,
+    CadenzaTransformerConfig,
+)
 
 DATASET_FILE = "data/dataset.pkl"
 
