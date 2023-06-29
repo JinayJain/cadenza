@@ -1,8 +1,5 @@
 from argparse import ArgumentParser
 import asyncio
-from re import A
-import time
-from typing import Optional
 import fluidsynth
 import torch
 from cadenza.constants import Constants
@@ -46,6 +43,14 @@ def parse_args():
         help="Temperature for sampling",
     )
 
+    parser.add_argument(
+        "-q",
+        "--queue-size",
+        type=int,
+        default=256,
+        help="Size of event queue",
+    )
+
     return parser.parse_args()
 
 
@@ -73,7 +78,6 @@ async def generator(
                 top_p=p,
                 temperature=temperature,
             )
-            print(token)
             tokens = torch.cat([tokens, token], dim=1)
 
             event = token_to_event(token[0].item())
@@ -92,7 +96,7 @@ async def main():
 
     velocity = 127
 
-    event_queue = asyncio.Queue(256)
+    event_queue = asyncio.Queue(maxsize=args.queue_size)
 
     asyncio.create_task(
         generator(args.model, args.top_p, args.temperature, event_queue)
@@ -104,15 +108,14 @@ async def main():
         if event_queue.qsize() < event_queue.maxsize // 3:
             print("Generator queue is running low!")
 
-        match kind:
-            case EventType.NOTE_ON:
-                fs.noteon(0, value, velocity)
-            case EventType.NOTE_OFF:
-                fs.noteoff(0, value)
-            case EventType.TIME_SHIFT:
-                await asyncio.sleep(value)
-            case EventType.SET_VELOCITY:
-                velocity = value
+        if kind == EventType.NOTE_ON:
+            fs.noteon(0, value, velocity)
+        elif kind == EventType.NOTE_OFF:
+            fs.noteoff(0, value)
+        elif kind == EventType.TIME_SHIFT:
+            await asyncio.sleep(value)
+        elif kind == EventType.SET_VELOCITY:
+            velocity = value
 
 
 if __name__ == "__main__":
