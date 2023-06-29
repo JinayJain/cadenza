@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
 import asyncio
+from re import A
 import time
+from typing import Optional
 import fluidsynth
 import torch
 from cadenza.constants import Constants
@@ -29,17 +31,30 @@ def parse_args():
     )
 
     parser.add_argument(
-        "-k",
-        "--top-k",
-        type=int,
-        default=Constants.NUM_TOKENS,
-        help="Number of top-k tokens to sample from",
+        "-p",
+        "--top-p",
+        type=float,
+        default=0.9,
+        help="Top-P sampling parameter",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature for sampling",
     )
 
     return parser.parse_args()
 
 
-async def generator(ckpt_path: str, k: int, event_queue: asyncio.Queue):
+async def generator(
+    ckpt_path: str,
+    p: float,
+    temperature: float,
+    event_queue: asyncio.Queue,
+):
     with torch.no_grad():
         print("Generator starting...")
         model = CadenzaTransformer.load_from_checkpoint(ckpt_path)
@@ -53,24 +68,12 @@ async def generator(ckpt_path: str, k: int, event_queue: asyncio.Queue):
         ).to(model.device)
 
         while True:
-            tokens = tokens[:, -model.cfg.block_size :]
-
-            output = model(tokens)
-
-            # token = torch.multinomial(
-            #     torch.softmax(output[:, -1] / temperature, dim=-1),
-            #     num_samples=1,
-            # )
-
-            top_k = torch.topk(output[:, -1], k=k, dim=-1)
-
-            token_idx = torch.multinomial(
-                torch.softmax(top_k.values, dim=-1),
-                num_samples=1,
+            token = model.generate_single(
+                tokens[:, -Constants.CONTEXT_LENGTH :],
+                top_p=p,
+                temperature=temperature,
             )
-
-            token = top_k.indices[0, token_idx]
-
+            print(token)
             tokens = torch.cat([tokens, token], dim=1)
 
             event = token_to_event(token[0].item())
@@ -91,7 +94,9 @@ async def main():
 
     event_queue = asyncio.Queue(256)
 
-    asyncio.create_task(generator(args.model, args.top_k, event_queue))
+    asyncio.create_task(
+        generator(args.model, args.top_p, args.temperature, event_queue)
+    )
 
     while True:
         kind, value = await event_queue.get()

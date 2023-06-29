@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 from torch import nn
 from torch.nn import functional as F
 import torch
@@ -64,6 +65,71 @@ class CadenzaTransformer(l.LightningModule):
             y.view(-1),
         )
         self.log("val_loss", loss)
+
+    def generate(
+        self,
+        prompt: Optional[torch.Tensor],
+        num_tokens,
+        top_p: float = 0.95,
+        temperature: float = 1.0,
+        show_progress: bool = False,
+    ):
+        if prompt is None:
+            prompt = torch.randint(
+                self.cfg.vocab_size,
+                (1, 1),
+                dtype=torch.long,
+            )
+
+        tokens = prompt
+
+        if self.training:
+            print("WARNING: You are running generate in training mode")
+
+        if show_progress:
+            from tqdm import tqdm
+
+            iterator = tqdm(range(num_tokens))
+        else:
+            iterator = range(num_tokens)
+
+        with torch.no_grad():
+            for i in iterator:
+                model_input = tokens[:, -self.block_size :].to(self.device)
+                token = self.generate_single(model_input, top_p, temperature).to(
+                    tokens.device
+                )
+                tokens = torch.cat([tokens, token], dim=1)
+
+        return tokens
+
+    def generate_single(self, tokens, top_p, temperature):
+        logits = self(tokens) / temperature
+
+        # Top-P Sampling
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+        cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+
+        sorted_indices_to_remove = cumulative_probs > top_p
+
+        # Shift the indices to the right to keep also the first token above the threshold
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+        # Set first token to false to always keep it
+        sorted_indices_to_remove[..., 0] = 0
+
+        indices_to_remove = sorted_indices_to_remove.scatter(
+            dim=-1, index=sorted_indices, src=sorted_indices_to_remove
+        )
+
+        logits[indices_to_remove] = float("-inf")
+
+        # sample from the output distribution
+        token = torch.multinomial(
+            torch.softmax(logits[:, -1], dim=-1),
+            num_samples=1,
+        ).to(tokens.device)
+
+        return token
 
 
 class TransformerLayer(nn.Module):

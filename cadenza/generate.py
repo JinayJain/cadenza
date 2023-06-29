@@ -22,41 +22,29 @@ def main():
     device = cpu
     model = CadenzaTransformer.load_from_checkpoint(args.model).to(cuda)
 
+    prompt = None
+
     if args.prompt is not None:
         midi = load_midi(args.prompt)
         tokens = convert_midi_to_tokens(midi)
-        tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
+        prompt = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
 
         if args.num_prompt_tokens is not None:
-            tokens = tokens[:, : args.num_prompt_tokens]
-    else:
-        tokens = torch.randint(
-            Constants.NUM_TOKENS,
-            (1, 1),
-            dtype=torch.long,
-            device=device,
-        )
+            prompt = prompt[:, : args.num_prompt_tokens]
 
-    # hidden = model.init_hidden(1, device)
-    # _, hidden = model(tokens, hidden)
-
-    block_size = model.cfg.block_size // 2
     model.eval()
-    for i in tqdm(range(args.num_generate)):
-        model_input = tokens[:, -block_size:].to(cuda)
-        output = model(model_input).to(cpu)
 
-        # sample from the output distribution
-        token = torch.multinomial(
-            torch.softmax(output[:, -1] / args.temperature, dim=-1),
-            num_samples=1,
-        )
+    generated = model.generate(
+        prompt=prompt,
+        num_tokens=args.num_generate,
+        top_p=args.top_p,
+        temperature=args.temperature,
+        show_progress=True,
+    )
 
-        tokens = torch.cat([tokens, token], dim=1)
+    midi = convert_tokens_to_midi(generated[0])
 
-    midi = convert_tokens_to_midi(tokens[0])
-
-    midi.save("sample.mid")
+    midi.save(args.output)
 
 
 def parse_args():
@@ -79,7 +67,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "-p",
         "--prompt",
         type=str,
         default=None,
@@ -107,6 +94,14 @@ def parse_args():
         type=float,
         default=1.0,
         help="Temperature for sampling",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--top-p",
+        type=float,
+        default=0.9,
+        help="Top-P sampling parameter",
     )
 
     return parser.parse_args()
