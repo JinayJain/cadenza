@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 import asyncio
+import time
 import fluidsynth
 import torch
 from cadenza.constants import Constants
@@ -51,6 +52,14 @@ def parse_args():
         help="Size of event queue",
     )
 
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        help="Path to output audio file",
+        required=False,
+    )
+
     return parser.parse_args()
 
 
@@ -89,7 +98,10 @@ async def main():
     args = parse_args()
 
     fs = fluidsynth.Synth()
-    fs.start()
+    if args.output:
+        f = open(args.output, "wb")
+    else:
+        fs.start()
 
     sfid = fs.sfload(args.soundfont)
     fs.program_select(0, sfid, 0, 0)
@@ -113,7 +125,14 @@ async def main():
         elif kind == EventType.NOTE_OFF:
             fs.noteoff(0, value)
         elif kind == EventType.TIME_SHIFT:
-            await asyncio.sleep(value)
+            start = time.time()
+            print("Queue size:", event_queue.qsize())
+            if args.output:
+                sample = fs.get_samples(int(value * 44100))
+                f.write(fluidsynth.raw_audio_string(sample))
+
+            sleep_time = value - (time.time() - start)
+            await asyncio.sleep(max(0, sleep_time * 0.9))
         elif kind == EventType.SET_VELOCITY:
             velocity = value
 
