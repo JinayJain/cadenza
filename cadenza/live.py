@@ -126,7 +126,6 @@ async def main():
             fs.noteoff(0, value)
         elif kind == EventType.TIME_SHIFT:
             start = time.time()
-            print("Queue size:", event_queue.qsize())
             if args.output:
                 sample = fs.get_samples(int(value * 44100))
                 f.write(fluidsynth.raw_audio_string(sample))

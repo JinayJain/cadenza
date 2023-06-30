@@ -6,6 +6,8 @@ import torch
 from dataclasses import dataclass
 import lightning as l
 
+from cadenza.util import top_p_sample
+
 
 @dataclass
 class CadenzaTransformerConfig:
@@ -24,7 +26,8 @@ class CadenzaTransformer(l.LightningModule):
 
         self.save_hyperparameters()
 
-        self.cfg = cfg
+        self.lr = cfg.lr
+        self.vocab_size = cfg.vocab_size
 
         self.embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.pos_encoder = PositionalEncoding(cfg.d_model, cfg.dropout)
@@ -45,7 +48,7 @@ class CadenzaTransformer(l.LightningModule):
         return x
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.cfg.lr)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -76,7 +79,7 @@ class CadenzaTransformer(l.LightningModule):
     ):
         if prompt is None:
             prompt = torch.randint(
-                self.cfg.vocab_size,
+                self.vocab_size,
                 (1, 1),
                 dtype=torch.long,
             )
@@ -106,28 +109,7 @@ class CadenzaTransformer(l.LightningModule):
     def generate_single(self, tokens, top_p, temperature):
         logits = self(tokens) / temperature
 
-        # Top-P Sampling
-        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-        cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-
-        sorted_indices_to_remove = cumulative_probs > top_p
-
-        # Shift the indices to the right to keep also the first token above the threshold
-        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-        # Set first token to false to always keep it
-        sorted_indices_to_remove[..., 0] = 0
-
-        indices_to_remove = sorted_indices_to_remove.scatter(
-            dim=-1, index=sorted_indices, src=sorted_indices_to_remove
-        )
-
-        logits[indices_to_remove] = float("-inf")
-
-        # sample from the output distribution
-        token = torch.multinomial(
-            torch.softmax(logits[:, -1], dim=-1),
-            num_samples=1,
-        ).to(tokens.device)
+        token = top_p_sample(logits, top_p).to(tokens.device)
 
         return token
 
@@ -176,8 +158,7 @@ class MultiHeadRelAttention(nn.Module):
 
         assert cfg.d_model % cfg.n_head == 0
 
-        self.cfg = cfg
-
+        self.n_head = cfg.n_head
         self.w_q = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
         self.w_k = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
         self.w_v = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
@@ -203,7 +184,7 @@ class MultiHeadRelAttention(nn.Module):
 
         q, k, v = self.w_q(x), self.w_k(x), self.w_v(x)  # (B, T, C)
 
-        n_head = self.cfg.n_head
+        n_head = self.n_head
         q = q.view(B, T, n_head, C // n_head).transpose(1, 2)
         k = k.view(B, T, n_head, C // n_head).transpose(1, 2)
         v = v.view(B, T, n_head, C // n_head).transpose(1, 2)
@@ -259,25 +240,3 @@ class FeedForward(nn.Module):
         x = self.dropout(x)
         x = self.fc2(x)
         return x
-
-
-def main():
-    batch_size = 3
-    cfg = CadenzaTransformerConfig(
-        vocab_size=10,
-        d_model=16,
-        n_head=2,
-        block_size=20,
-        dropout=0.1,
-        n_attn_layer=1,
-        lr=0.001,
-    )
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = CadenzaTransformer(cfg).to(device)
-    x = torch.randint(0, cfg.vocab_size, (batch_size, cfg.block_size)).to(device)
-    y = model(x)
-
-
-if __name__ == "__main__":
-    main()
